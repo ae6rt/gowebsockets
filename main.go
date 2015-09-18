@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/base64"
-	"encoding/json"
 	"flag"
 	"io"
 	"os"
@@ -18,6 +17,7 @@ import (
 var (
 	user      = flag.String("user", "", "Kubernetes master username")
 	password  = flag.String("password", "", "Kubernetes master password")
+	pod       = flag.String("pod", "", "Kubernetes pod to watch")
 	ipAddress = flag.String("ip-address", "", "Kubernetes master IP address")
 )
 
@@ -30,11 +30,11 @@ func main() {
 		log.Fatalf("No user/pass\n")
 	}
 
-	originURL, err := url.Parse("https://" + *ipAddress + "/api/v1/watch/namespaces/default/events?watch=true&pretty=true")
+	originURL, err := url.Parse("https://" + *ipAddress + "/api/v1/watch/namespaces/decap/pods/" + *pod + "?watch=true&labelSelector=type=decap-build")
 	if err != nil {
 		log.Fatal(err)
 	}
-	serviceURL, err := url.Parse("wss://" + *ipAddress + "/api/v1/watch/namespaces/default/events?watch=true&pretty=true")
+	serviceURL, err := url.Parse("wss://" + *ipAddress + "/api/v1/watch/namespaces/decap/pods/" + *pod + "?watch=true&labelSelector=type=decap-build")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -52,6 +52,7 @@ func main() {
 		log.Fatalf("Error opening connection: %v\n", err)
 	}
 
+	// returns a Pod Object
 	var msg string
 	for {
 		err := websocket.Message.Receive(conn, &msg)
@@ -62,14 +63,15 @@ func main() {
 			log.Println("Couldn't receive msg " + err.Error())
 			break
 		}
-		var event Event
-		if err := json.Unmarshal([]byte(msg), &event); err != nil {
-			log.Println(err)
-			continue
-		}
-		if event.Object.Reason != "creating loadbalancer failed" {
-			log.Printf("%+v\n", event)
-		}
+		//var event Event
+		//if err := json.Unmarshal([]byte(msg), &event); err != nil {
+		//log.Println(err)
+		//continue
+		//}
+		log.Printf("%s\n", msg)
+		//if event.Object.Reason != "creating loadbalancer failed" {
+		//log.Printf("%+v\n", event)
+		//}
 	}
 	os.Exit(0)
 }
