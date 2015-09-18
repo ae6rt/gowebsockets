@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"flag"
 	"io"
 	"os"
@@ -17,7 +18,6 @@ import (
 var (
 	user      = flag.String("user", "", "Kubernetes master username")
 	password  = flag.String("password", "", "Kubernetes master password")
-	pod       = flag.String("pod", "", "Kubernetes pod to watch")
 	ipAddress = flag.String("ip-address", "", "Kubernetes master IP address")
 )
 
@@ -30,11 +30,11 @@ func main() {
 		log.Fatalf("No user/pass\n")
 	}
 
-	originURL, err := url.Parse("https://" + *ipAddress + "/api/v1/watch/namespaces/decap/pods/" + *pod + "?watch=true&labelSelector=type=decap-build")
+	originURL, err := url.Parse("https://" + *ipAddress + "/api/v1/watch/namespaces/decap/pods?watch=true&labelSelector=type=decap-build")
 	if err != nil {
 		log.Fatal(err)
 	}
-	serviceURL, err := url.Parse("wss://" + *ipAddress + "/api/v1/watch/namespaces/decap/pods/" + *pod + "?watch=true&labelSelector=type=decap-build")
+	serviceURL, err := url.Parse("wss://" + *ipAddress + "/api/v1/watch/namespaces/decap/pods?watch=true&labelSelector=type=decap-build")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -63,31 +63,54 @@ func main() {
 			log.Println("Couldn't receive msg " + err.Error())
 			break
 		}
-		//var event Event
-		//if err := json.Unmarshal([]byte(msg), &event); err != nil {
-		//log.Println(err)
-		//continue
-		//}
-		log.Printf("%s\n", msg)
-		//if event.Object.Reason != "creating loadbalancer failed" {
-		//log.Printf("%+v\n", event)
-		//}
+		var pod Pod
+		if err := json.Unmarshal([]byte(msg), &pod); err != nil {
+			log.Println(err)
+			continue
+		}
+		var deletePod bool
+		for _, status := range pod.Object.Status.Statuses {
+			if status.Name == "build-server" && status.State.Terminated.ContainerID != "" {
+				deletePod = true
+				break
+			}
+		}
+		if deletePod {
+			log.Printf("Would delete:  %+v\n", pod)
+		}
+
 	}
 	os.Exit(0)
 }
 
-type Event struct {
+type Pod struct {
 	Object Object `json:"object"`
-	Type   string `json:"type"`
 }
 
 type Object struct {
-	InvolvedObject InvolvedObject `json:"involvedObject"`
-	Reason         string         `json:"reason"`
+	Meta   Metadata `json:"metadata"`
+	Status Status   `json:"status"`
 }
 
-type InvolvedObject struct {
-	Kind      string `json:"kind"`
-	Name      string `json:"name"`
-	Namespace string `json:"namespace"`
+type Metadata struct {
+	Name string `json:"name"`
+}
+
+type Status struct {
+	Statuses []ContainerStatus `json:"containerStatuses"`
+}
+
+type ContainerStatus struct {
+	Name  string `json:"name"`
+	Ready bool   `json:"ready"`
+	State State  `json:"state"`
+}
+
+type State struct {
+	Terminated Terminated `json:"terminated"`
+}
+
+type Terminated struct {
+	ContainerID string `json:"containerID"`
+	ExitCode    int    `json:"exitCode"`
 }
